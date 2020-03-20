@@ -6,24 +6,21 @@ schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 
 import numpy as np
 import pandas as pd
+
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
     -> experiment.BehaviorTrial
     ---
-    reaction_time : decimal(8,4) # reaction time in seconds (first lick relative to go cue) [-1 in case of ignore trials]
-    first_lick_time : decimal(8,4) # time of the first lick after GO cue from trial start in seconds [-1 in case of ignore trials]
+    reaction_time = null : decimal(8,4) # reaction time in seconds (first lick relative to go cue) [-1 in case of ignore trials]
     """
     def make(self, key):
         df_licks=pd.DataFrame((experiment.ActionEvent & key).fetch())
         df_gocue = pd.DataFrame((experiment.TrialEvent() & key).fetch())
         gocue_time = df_gocue['trial_event_time'][df_gocue['trial_event_type'] == 'go']
         lick_times = (df_licks['action_event_time'][df_licks['action_event_time'].values>gocue_time.values] - gocue_time.values).values
-        key['reaction_time'] = -1
-        key['first_lick_time'] = -1
         if len(lick_times) > 0:
-            key['reaction_time'] = float(min(lick_times))  
-            key['first_lick_time'] = float(min(lick_times))  + float(gocue_time.values)
+            key['reaction_time'] = float(min(lick_times))
         self.insert1(key,skip_duplicates=True)
 
 @schema
