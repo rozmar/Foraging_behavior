@@ -11,7 +11,7 @@ try:
             behavior_foraging.BlockStats().populate(**arguments)
             behavior_foraging.SessionStats().populate(**arguments)
             behavior_foraging.SessionRuns().populate(**arguments)
-            behavior_foraging.SessionTrainingType().populate(**arguments)
+            behavior_foraging.SessionTaskProtocol().populate(**arguments)
 except:
     pass
         
@@ -21,7 +21,7 @@ def populatemytables_core(arguments,runround):
         behavior_foraging.BlockStats().populate(**arguments)
         behavior_foraging.SessionStats().populate(**arguments)
         behavior_foraging.SessionRuns().populate(**arguments)
-        behavior_foraging.SessionTrainingType().populate(**arguments)
+        behavior_foraging.SessionTaskProtocol().populate(**arguments)
         
 def populatemytables(paralel = True, cores = 9):
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}              
