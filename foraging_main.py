@@ -4,3 +4,4 @@ import foraging_populate
 dj.conn()
 #%% populate tables
 foraging_populate.populatemytables(paralel = False, cores = 5)
+new stuff
