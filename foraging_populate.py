@@ -1,16 +1,19 @@
 import datajoint as dj
 from pipeline import pipeline_tools, lab, experiment, behavior_foraging
 dj.conn()
-import ray
-#%%
-@ray.remote
-def populatemytables_core_paralel(arguments,runround):
-    if runround == 1:
-        behavior_foraging.TrialReactionTime().populate(**arguments)
-        behavior_foraging.BlockStats().populate(**arguments)
-        behavior_foraging.SessionStats().populate(**arguments)
-        behavior_foraging.SessionRuns().populate(**arguments)
-        behavior_foraging.SessionTrainingType().populate(**arguments)
+try:
+    import ray
+    #%%
+    @ray.remote
+    def populatemytables_core_paralel(arguments,runround):
+        if runround == 1:
+            behavior_foraging.TrialReactionTime().populate(**arguments)
+            behavior_foraging.BlockStats().populate(**arguments)
+            behavior_foraging.SessionStats().populate(**arguments)
+            behavior_foraging.SessionRuns().populate(**arguments)
+            behavior_foraging.SessionTrainingType().populate(**arguments)
+except:
+    pass
         
 def populatemytables_core(arguments,runround):
     if runround == 1:
