@@ -6,7 +6,7 @@ schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 
 import numpy as np
 import pandas as pd
-
+#%%
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
@@ -28,46 +28,45 @@ class BlockStats(dj.Computed):
     definition = """
     -> experiment.SessionBlock
     ---
-    block_trialnum : int #number of trials in block
-    block_ignores : int #number of ignores
-    block_reward_rate: decimal(8,4) # miss = 0, hit = 1
+    block_trial_num : int # number of trials in block
+    block_ignore_num : int # number of ignores
+    block_reward_rate: decimal(8,4) # hits / (hits + misses)
     """
     def make(self, key):
         keytoinsert = key
-        keytoinsert['block_trialnum'] = len((experiment.BehaviorTrial() & key))
-        keytoinsert['block_ignores'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
-        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"'))/keytoinsert['block_trialnum']
+        keytoinsert['block_trial_num'] = len((experiment.BehaviorTrial() & key))
+        keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
         self.insert1(keytoinsert,skip_duplicates=True)
  
     
-    
-@schema
+@schema #TODO remove bias check trials from statistics
 class SessionStats(dj.Computed):
     definition = """
     -> experiment.Session
     ---
-    session_trialnum : int #number of trials
-    session_blocknum : int #number of blocks
-    session_hits : int #number of hits
-    session_misses : int #number of misses
-    session_ignores : int #number of ignores
-    session_ignore_trial_nums : longblob #number of ignores
-    session_autowaters : int #number of autowaters
+    session_total_trial_num : int #number of trials
+    session_block_num : int #number of blocks
+    session_hit_num : int #number of hits
+    session_miss_num : int #number of misses
+    session_ignore_num : int #number of ignores
+    session_ignore_trial_nums : longblob #trial number of ignore trials
+    session_autowater_num : int #number of trials with autowaters
     session_length : decimal(10, 4) #length of the session in seconds
-    session_pretraining_trial_num = null: int #number of pretraining trials
+    session_bias_check_trial_num = null: int #number of bias check trials
     session_1st_3_ignores = null : int #trialnum where the first three ignores happened in a row
     session_1st_2_ignores = null : int #trialnum where the first three ignores happened in a row
     session_1st_ignore = null : int #trialnum where the first ignore happened    
     """
     def make(self, key):
         keytoadd = key
-        keytoadd['session_trialnum'] = len(experiment.SessionTrial()&key)
-        keytoadd['session_blocknum'] = len(experiment.SessionBlock()&key)
-        keytoadd['session_hits'] = len(experiment.BehaviorTrial()&key&'outcome = "hit"')
-        keytoadd['session_misses'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
-        keytoadd['session_ignores'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
-        keytoadd['session_autowaters'] = len(experiment.TrialNote & key &'trial_note_type = "autowater"')
-        if keytoadd['session_trialnum'] > 0:
+        keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
+        keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
+        keytoadd['session_hit_num'] = len(experiment.BehaviorTrial()&key&'outcome = "hit"')
+        keytoadd['session_miss_num'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
+        keytoadd['session_ignore_num'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
+        keytoadd['session_autowater_num'] = len(experiment.TrialNote & key &'trial_note_type = "autowater"')
+        if keytoadd['session_trial_num'] > 0:
             keytoadd['session_length'] = float(((experiment.SessionTrial() & key).fetch('trial_stop_time')).max())
         else:
             keytoadd['session_length'] = 0
@@ -75,21 +74,21 @@ class SessionStats(dj.Computed):
         if len(df_choices)>0:
             realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
             if not realtraining.values.any():
-                keytoadd['session_pretraining_trial_num'] = keytoadd['session_trialnum']
+                keytoadd['session_bias_check_trial_num'] = keytoadd['session_trial_num']
                # print('all pretraining')
             else:
-                keytoadd['session_pretraining_trial_num'] = realtraining.values.argmax()
+                keytoadd['session_bias_check_trial_num'] = realtraining.values.argmax()
                 #print(str(realtraining.values.argmax())+' out of '+str(keytoadd['session_trialnum']))
-            if (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.any():
-                keytoadd['session_1st_ignore'] = (df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values.argmax()+keytoadd['session_pretraining_trial_num']+1
-                if (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==2).any():
-                    keytoadd['session_1st_2_ignores'] = (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==2).argmax() +keytoadd['session_pretraining_trial_num']+1
-                if (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).any():
-                    keytoadd['session_1st_3_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).argmax() +keytoadd['session_pretraining_trial_num']+1
+            if (df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values.any():
+                keytoadd['session_1st_ignore'] = (df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values.argmax()+keytoadd['session_bias_check_trial_num']+1
+                if (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==2).any():
+                    keytoadd['session_1st_2_ignores'] = (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==2).argmax() +keytoadd['session_bias_check_trial_num']+1
+                if (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==3).any():
+                    keytoadd['session_1st_3_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==3).argmax() +keytoadd['session_bias_check_trial_num']+1
         self.insert1(keytoadd,skip_duplicates=True)
   
 
-@schema
+@schema # TODO do we need bias check here?
 class SessionRuns(dj.Computed):
     definition = """
     # a run is a sequence of trials when the mouse chooses the same option
@@ -98,7 +97,7 @@ class SessionRuns(dj.Computed):
     ---
     run_start : int # first trial #the switch itself
     run_end : int # last trial #one trial before the next choice
-    run_choice : varchar(8) # left or right
+    run_choice : varchar(8) # left or right or middle
     run_length : int # number of trials in this run
     run_hits : int # number of hit trials
     run_misses : int # number of miss trials
@@ -107,7 +106,7 @@ class SessionRuns(dj.Computed):
     """
     def make(self, key):     
         #%
-        #key = {'subject_id':453475,'session':1}
+        #key = {'subject_id':453475,'session':10}
         df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
         if len(df_choices)>10:
             df_choices['run_choice'] = df_choices['trial_choice']
@@ -165,11 +164,12 @@ class SessionRuns(dj.Computed):
                     df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]!='miss')[::-1].idxmax():run_end+1]=='miss')        
                 
                 df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
+                #%
             self.insert(df_key.to_records(index=False))
             
             
 @schema
-class SessionTrainingType(dj.Computed):
+class SessionTaskProtocol(dj.Computed):
     definition = """
     -> experiment.Session
     ---
