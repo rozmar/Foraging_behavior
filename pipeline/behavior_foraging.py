@@ -27,6 +27,24 @@ class TrialReactionTime(dj.Computed):
         self.insert1(key,skip_duplicates=True)
 
 @schema
+class BlockStats(dj.Computed):
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_trialnum : int #number of trials in block
+    block_ignores : int #number of ignores
+    block_reward_rate: decimal(8,4) # miss = 0, hit = 1
+    """
+    def make(self, key):
+        keytoinsert = key
+        keytoinsert['block_trialnum'] = len((experiment.BehaviorTrial() & key))
+        keytoinsert['block_ignores'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"'))/keytoinsert['block_trialnum']
+        self.insert1(keytoinsert,skip_duplicates=True)
+ 
+    
+    
+@schema
 class SessionStats(dj.Computed):
     definition = """
     -> experiment.Session
@@ -73,23 +91,7 @@ class SessionStats(dj.Computed):
                     keytoadd['session_1st_3_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_pretraining_trial_num']:] == 'ignore').values)==3).argmax() +keytoadd['session_pretraining_trial_num']+1
         self.insert1(keytoadd,skip_duplicates=True)
   
-    
-@schema
-class BlockStats(dj.Computed):
-    definition = """
-    -> experiment.SessionBlock
-    ---
-    block_trialnum : int #number of trials in block
-    block_ignores : int #number of ignores
-    block_reward_rate: decimal(8,4) # miss = 0, hit = 1
-    """
-    def make(self, key):
-        keytoinsert = key
-        keytoinsert['block_trialnum'] = len((experiment.BehaviorTrial() & key))
-        keytoinsert['block_ignores'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
-        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"'))/keytoinsert['block_trialnum']
-        self.insert1(keytoinsert,skip_duplicates=True)
-  
+
 @schema
 class SessionRuns(dj.Computed):
     definition = """
