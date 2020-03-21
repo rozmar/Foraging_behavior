@@ -29,13 +29,16 @@ class BlockStats(dj.Computed):
     ---
     block_trial_num : int # number of trials in block
     block_ignore_num : int # number of ignores
-    block_reward_rate: decimal(8,4) # hits / (hits + misses)
+    block_reward_rate = null: decimal(8,4) # hits / (hits + misses)
     """
     def make(self, key):
         keytoinsert = key
         keytoinsert['block_trial_num'] = len((experiment.BehaviorTrial() & key))
         keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
-        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        try:
+            keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        except:
+            pass
         self.insert1(keytoinsert,skip_duplicates=True)
  
     
@@ -49,7 +52,7 @@ class SessionStats(dj.Computed):
     session_hit_num : int #number of hits
     session_miss_num : int #number of misses
     session_ignore_num : int #number of ignores
-    session_ignore_trial_nums : longblob #trial number of ignore trials
+    session_ignore_trial_nums = null : longblob #trial number of ignore trials
     session_autowater_num : int #number of trials with autowaters
     session_length : decimal(10, 4) #length of the session in seconds
     session_bias_check_trial_num = null: int #number of bias check trials
@@ -65,7 +68,7 @@ class SessionStats(dj.Computed):
         keytoadd['session_miss_num'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
         keytoadd['session_ignore_num'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
         keytoadd['session_autowater_num'] = len(experiment.TrialNote & key &'trial_note_type = "autowater"')
-        if keytoadd['session_trial_num'] > 0:
+        if keytoadd['session_total_trial_num'] > 0:
             keytoadd['session_length'] = float(((experiment.SessionTrial() & key).fetch('trial_stop_time')).max())
         else:
             keytoadd['session_length'] = 0
@@ -73,7 +76,7 @@ class SessionStats(dj.Computed):
         if len(df_choices)>0:
             realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
             if not realtraining.values.any():
-                keytoadd['session_bias_check_trial_num'] = keytoadd['session_trial_num']
+                keytoadd['session_bias_check_trial_num'] = keytoadd['session_total_trial_num']
                # print('all pretraining')
             else:
                 keytoadd['session_bias_check_trial_num'] = realtraining.values.argmax()
