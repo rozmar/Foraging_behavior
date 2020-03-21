@@ -5,7 +5,7 @@ from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 import numpy as np
 import pandas as pd
-#%
+#%%
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
