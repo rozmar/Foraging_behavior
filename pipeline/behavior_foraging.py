@@ -191,6 +191,25 @@ class SessionTaskProtocol(dj.Computed):
                 key['session_real_foraging'] =  False
             self.insert1(key,skip_duplicates=True)
 
+@schema
+class BlockEfficiency(dj.Computed):
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_effi_one_preward =  null: decimal(8,4) # denominator = max of the reward assigned probability (no baiting)
+    block_effi_sum_preward =  null: decimal(8,4) # denominator = sum of the reward assigned probability (no baiting)
+    block_effi_one_areward =  null: decimal(8,4) # denominator = max of the reward assigned probability + baiting)
+    block_effi_sum_areward =  null: decimal(8,4) # denominator = sum of the reward assigned probability + baiting)
+    """
+    def make(self, key):
+        keytoinsert = key
+        keytoinsert['block_trial_num'] = len((experiment.BehaviorTrial() & key))
+        keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+        try:
+            keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        except:
+            pass
+        self.insert1(keytoinsert,skip_duplicates=True)
 
 # something about bias?
 # reward rates for each block?
