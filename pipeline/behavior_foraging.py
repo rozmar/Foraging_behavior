@@ -5,7 +5,7 @@ from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 import numpy as np
 import pandas as pd
-#%
+#%%
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
@@ -192,10 +192,11 @@ class SessionTaskProtocol(dj.Computed):
             self.insert1(key,skip_duplicates=True)
 
 @schema
-class BlockEfficiency(dj.Computed):
+class BlockEfficiency(dj.Computed): # bias check excluded
     definition = """
     -> experiment.SessionBlock
     ---
+    block_num_nobiascheck = null: int # block numbers of a given session without bias check
     block_effi_one_preward =  null: decimal(8,4) # denominator = max of the reward assigned probability (no baiting)
     block_effi_sum_preward =  null: decimal(8,4) # denominator = sum of the reward assigned probability (no baiting)
     block_effi_one_areward =  null: decimal(8,4) # denominator = max of the reward assigned probability + baiting)
@@ -203,7 +204,22 @@ class BlockEfficiency(dj.Computed):
     """
     def make(self, key):
         keytoinsert = key
-        keytoinsert['block_trial_num'] = len((experiment.BehaviorTrial() & key))
+        block_num,p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('block','p_reward_left','p_reward_right','p_reward_middle')
+        block_num_nobiascheck = max(block_num)
+        p_reward_left = p_reward_left.astype(float)
+        p_reward_right = p_reward_right.astype(float)
+        p_reward_middle = p_reward_middle.astype(float)
+        for i in range(block_num_nobiascheck):
+            if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
+                block_num_nobiascheck = block_num_nobiascheck-1
+            else:
+                block_effi_one_preward_denominator = 
+                
+        
+        
+        
+        block_effi_one_preward_denominator = 
+        keytoinsert['block_effi_one_preward'] = len((experiment.SessionBlock() & key))
         keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
         try:
             keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
