@@ -5,7 +5,7 @@ from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 import numpy as np
 import pandas as pd
-#%
+#%%
 @schema
 class TrialReactionTime(dj.Computed):
     definition = """
@@ -29,13 +29,16 @@ class BlockStats(dj.Computed):
     ---
     block_trial_num : int # number of trials in block
     block_ignore_num : int # number of ignores
-    block_reward_rate: decimal(8,4) # hits / (hits + misses)
+    block_reward_rate = null: decimal(8,4) # hits / (hits + misses)
     """
     def make(self, key):
         keytoinsert = key
         keytoinsert['block_trial_num'] = len((experiment.BehaviorTrial() & key))
         keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
-        keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        try:
+            keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        except:
+            pass
         self.insert1(keytoinsert,skip_duplicates=True)
  
     
@@ -49,7 +52,7 @@ class SessionStats(dj.Computed):
     session_hit_num : int #number of hits
     session_miss_num : int #number of misses
     session_ignore_num : int #number of ignores
-    session_ignore_trial_nums : longblob #trial number of ignore trials
+    session_ignore_trial_nums = null : longblob #trial number of ignore trials
     session_autowater_num : int #number of trials with autowaters
     session_length : decimal(10, 4) #length of the session in seconds
     session_bias_check_trial_num = null: int #number of bias check trials
@@ -65,7 +68,7 @@ class SessionStats(dj.Computed):
         keytoadd['session_miss_num'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
         keytoadd['session_ignore_num'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
         keytoadd['session_autowater_num'] = len(experiment.TrialNote & key &'trial_note_type = "autowater"')
-        if keytoadd['session_trial_num'] > 0:
+        if keytoadd['session_total_trial_num'] > 0:
             keytoadd['session_length'] = float(((experiment.SessionTrial() & key).fetch('trial_stop_time')).max())
         else:
             keytoadd['session_length'] = 0
@@ -73,7 +76,7 @@ class SessionStats(dj.Computed):
         if len(df_choices)>0:
             realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
             if not realtraining.values.any():
-                keytoadd['session_bias_check_trial_num'] = keytoadd['session_trial_num']
+                keytoadd['session_bias_check_trial_num'] = keytoadd['session_total_trial_num']
                # print('all pretraining')
             else:
                 keytoadd['session_bias_check_trial_num'] = realtraining.values.argmax()
@@ -188,6 +191,41 @@ class SessionTaskProtocol(dj.Computed):
                 key['session_real_foraging'] =  False
             self.insert1(key,skip_duplicates=True)
 
+@schema
+class BlockEfficiency(dj.Computed): # bias check excluded
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_num_nobiascheck = null: int # block numbers of a given session without bias check
+    block_effi_one_preward =  null: decimal(8,4) # denominator = max of the reward assigned probability (no baiting)
+    block_effi_sum_preward =  null: decimal(8,4) # denominator = sum of the reward assigned probability (no baiting)
+    block_effi_one_areward =  null: decimal(8,4) # denominator = max of the reward assigned probability + baiting)
+    block_effi_sum_areward =  null: decimal(8,4) # denominator = sum of the reward assigned probability + baiting)
+    """
+    def make(self, key):
+        keytoinsert = key
+        block_num,p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('block','p_reward_left','p_reward_right','p_reward_middle')
+        block_num_nobiascheck = max(block_num)
+        p_reward_left = p_reward_left.astype(float)
+        p_reward_right = p_reward_right.astype(float)
+        p_reward_middle = p_reward_middle.astype(float)
+        for i in range(block_num_nobiascheck):
+            if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
+                block_num_nobiascheck = block_num_nobiascheck-1
+            else:
+                block_effi_one_preward_denominator = 
+                
+        
+        
+        
+        block_effi_one_preward_denominator = 
+        keytoinsert['block_effi_one_preward'] = len((experiment.SessionBlock() & key))
+        keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+        try:
+            keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+        except:
+            pass
+        self.insert1(keytoinsert,skip_duplicates=True)
 
 # something about bias?
 # reward rates for each block?
