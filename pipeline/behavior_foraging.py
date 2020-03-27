@@ -5,6 +5,13 @@ from pipeline.pipeline_tools import get_schema_name
 schema = dj.schema(get_schema_name('behavior_foraging'),locals())
 import numpy as np
 import pandas as pd
+import math
+#%%
+block_reward_ratio_increment_step = 10
+block_reward_ratio_increment_window = 20
+block_reward_ratio_increment_max = 200
+
+
 #%%
 @schema
 class TrialReactionTime(dj.Computed):
@@ -22,7 +29,7 @@ class TrialReactionTime(dj.Computed):
             key['reaction_time'] = float(min(lick_times))
         self.insert1(key,skip_duplicates=True)
 
-@schema
+@schema # TODO remove bias check?
 class BlockStats(dj.Computed):
     definition = """
     -> experiment.SessionBlock
@@ -42,28 +49,35 @@ class BlockStats(dj.Computed):
         self.insert1(keytoinsert,skip_duplicates=True)
  
     
-@schema #TODO remove bias check trials from statistics
+@schema #remove bias check trials from statistics # 03/25/20 NW added nobiascheck terms for hit, miss and ignore trial num
 class SessionStats(dj.Computed):
     definition = """
     -> experiment.Session
     ---
     session_total_trial_num : int #number of trials
-    session_block_num : int #number of blocks
+    session_block_num : int #number of blocks, including bias check
+    session_block_num_nobiascheck : int # number of blocks, no bias check
     session_hit_num : int #number of hits
+    session_hit_num_nobiascheck : int # number of hits without bias check
     session_miss_num : int #number of misses
+    session_miss_num_nobiascheck: int # number of misses without bias check
     session_ignore_num : int #number of ignores
+    session_ignore_num_nobiascheck : int #number of ignores without bias check
     session_ignore_trial_nums = null : longblob #trial number of ignore trials
     session_autowater_num : int #number of trials with autowaters
     session_length : decimal(10, 4) #length of the session in seconds
     session_bias_check_trial_num = null: int #number of bias check trials
     session_1st_3_ignores = null : int #trialnum where the first three ignores happened in a row
     session_1st_2_ignores = null : int #trialnum where the first three ignores happened in a row
-    session_1st_ignore = null : int #trialnum where the first ignore happened    
+    session_1st_ignore = null : int #trialnum where the first ignore happened  
+    session_biascheck_block = null : int # the number of bias check blocks
     """
     def make(self, key):
         keytoadd = key
         keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
         keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
+        keytoadd['session_biascheck_block'] = np.array([0])
+        keytoadd['session_biascheck_block'] = np.nan
         keytoadd['session_hit_num'] = len(experiment.BehaviorTrial()&key&'outcome = "hit"')
         keytoadd['session_miss_num'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
         keytoadd['session_ignore_num'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
@@ -87,6 +101,24 @@ class SessionStats(dj.Computed):
                     keytoadd['session_1st_2_ignores'] = (np.convolve([1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==2).argmax() +keytoadd['session_bias_check_trial_num']+1
                 if (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==3).any():
                     keytoadd['session_1st_3_ignores'] = (np.convolve([1,1,1],(df_choices['outcome'][keytoadd['session_bias_check_trial_num']:] == 'ignore').values)==3).argmax() +keytoadd['session_bias_check_trial_num']+1
+            # get the hit, miss and ignore without bias check 03/25/20 NW
+            keytoadd['session_hit_num_nobiascheck'] = len(df_choices['outcome'][realtraining] == 'hit')
+            keytoadd['session_miss_num_nobiascheck'] = len(df_choices['outcome'][realtraining] == 'miss')
+            keytoadd['session_ignore_num_nobiascheck'] = len(df_choices['outcome'][realtraining] == 'ignore')                    
+            
+            # get the block num without bias check 03/25/20 NW
+            p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('p_reward_left','p_reward_right','p_reward_middle')
+            keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num']
+            p_reward_left = p_reward_left.astype(float)
+            p_reward_right = p_reward_right.astype(float)
+            p_reward_middle = p_reward_middle.astype(float)
+            for i in range(keytoadd['session_block_num_nobiascheck']):
+                if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
+                    keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num_nobiascheck']-1
+                    keytoadd['session_biascheck_block'] = np.append(keytoadd['session_biascheck_block'],i+1)
+            if len(keytoadd['session_biascheck_block'])>1 and math.isnan(keytoadd['session_biascheck_block'][0]):
+                keytoadd['session_biascheck_block'] = np.delete(keytoadd['session_biascheck_block'],0)
+        
         self.insert1(keytoadd,skip_duplicates=True)
   
 
@@ -191,6 +223,241 @@ class SessionTaskProtocol(dj.Computed):
                 key['session_real_foraging'] =  False
             self.insert1(key,skip_duplicates=True)
 
+@schema
+class BlockRewardRatioNoBiasCheck(dj.Computed): # without bias check
+    definition = """
+    -> experiment.SessionBlock
+    ---
+    block_reward_ratio : decimal(8,4) # miss = 0, hit = 1
+    block_reward_ratio_first_tertile : decimal(8,4) # 
+    block_reward_ratio_second_tertile : decimal(8,4) # 
+    block_reward_ratio_third_tertile : decimal(8,4) # 
+    block_length : smallint #
+    block_reward_ratio_right : decimal(8,4) # other = 0, right = 1
+    block_reward_ratio_first_tertile_right : decimal(8,4) # other = 0, right = 1
+    block_reward_ratio_second_tertile_right : decimal(8,4) # other = 0, right = 1 
+    block_reward_ratio_third_tertile_right : decimal(8,4) # other = 0, right = 1
+    block_reward_ratio_left : decimal(8,4) # other = 0, right = 1
+    block_reward_ratio_first_tertile_left : decimal(8,4) # other = 0, left = 1
+    block_reward_ratio_second_tertile_left : decimal(8,4) # other = 0, left = 1 
+    block_reward_ratio_third_tertile_left : decimal(8,4) # other = 0, left = 1
+    block_reward_ratio_middle : decimal(8,4) # other = 0, right = 1
+    block_reward_ratio_first_tertile_middle : decimal(8,4) # other = 0, middle = 1
+    block_reward_ratio_second_tertile_middle : decimal(8,4) # other = 0, middle = 1 
+    block_reward_ratio_third_tertile_middle : decimal(8,4) # other = 0, middle = 1
+    block_reward_ratios_incremental_right : longblob
+    block_reward_ratios_incremental_left : longblob
+    block_reward_ratios_incremental_middle : longblob
+    block_reward_ratios_incr_window : smallint
+    block_reward_ratios_incr_step : smallint
+    """    
+    def make(self, key):
+        #%%
+        block_reward_ratio_window_starts = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)-int(round(block_reward_ratio_increment_window/2))
+        block_reward_ratio_window_ends = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)+int(round(block_reward_ratio_increment_window/2))
+        block_reward_ratios_incremental_r=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        block_reward_ratios_incremental_l=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        block_reward_ratios_incremental_m=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        #%
+        #key = {'subject_id' : 453478, 'session' : 3, 'block':1}
+        # To skip bias check trial 03/25/20 NW
+        bias_check_block = int(SessionStats.fetch('session_biascheck_block'))      
+        
+        df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))                        
+        df_behaviortrial['reward']=0
+        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'hit' , 'reward'] = 1
+        df_behaviortrial.loc[df_behaviortrial['outcome'] == 'miss' , 'reward'] = 0     
+        df_behaviortrial['reward_L']=0
+        df_behaviortrial['reward_R']=0
+        df_behaviortrial['reward_M']=0
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'left') & (df_behaviortrial['outcome'] == 'hit') ,'reward_L']=1
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'right') & (df_behaviortrial['outcome'] == 'hit') ,'reward_R']=1
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'middle') & (df_behaviortrial['outcome'] == 'hit') ,'reward_M']=1
+        trialnum = len(df_behaviortrial)
+        key['block_reward_ratio'] = -1
+        key['block_reward_ratio_first_tertile'] = -1
+        key['block_reward_ratio_second_tertile'] = -1
+        key['block_reward_ratio_third_tertile'] = -1
+        key['block_reward_ratio_right'] = -1
+        key['block_reward_ratio_first_tertile_right'] = -1
+        key['block_reward_ratio_second_tertile_right'] = -1
+        key['block_reward_ratio_third_tertile_right'] = -1
+        key['block_reward_ratio_left'] = -1
+        key['block_reward_ratio_first_tertile_left'] = -1
+        key['block_reward_ratio_second_tertile_left'] = -1
+        key['block_reward_ratio_third_tertile_left'] = -1
+        key['block_reward_ratio_middle'] = -1
+        key['block_reward_ratio_first_tertile_middle'] = -1
+        key['block_reward_ratio_second_tertile_middle'] = -1
+        key['block_reward_ratio_third_tertile_middle'] = -1
+        key['block_reward_ratios_incremental_right'] = block_reward_ratios_incremental_r
+        key['block_reward_ratios_incremental_left'] = block_reward_ratios_incremental_l
+        key['block_reward_ratios_incremental_middle'] = block_reward_ratios_incremental_m
+        key['block_reward_ratios_incr_window'] = block_reward_ratio_increment_window 
+        key['block_reward_ratios_incr_step'] =  block_reward_ratio_increment_step
+        #trialnums = (BlockStats()&'subject_id = '+str(key['subject_id'])).fetch('block_trialnum')
+        key['block_length'] = trialnum
+        if any(df_behaviortrial['block'] == int(y) for y in bias_check_block):  #trialnum >10:
+            tertilelength = int(np.floor(trialnum /3))            
+            block_reward_ratio = df_behaviortrial.reward.mean()
+            block_reward_ratio_first_tertile = df_behaviortrial.reward[:tertilelength].mean()
+            block_reward_ratio_second_tertile = df_behaviortrial.reward[-tertilelength:].mean()
+            block_reward_ratio_third_tertile = df_behaviortrial.reward[tertilelength:2*tertilelength].mean()
+            
+            
+            if df_behaviortrial.reward.sum() == 0:# np.isnan(block_reward_ratio_differential):
+                block_reward_ratio_right = -1
+                block_reward_ratio_left = -1
+                block_reward_ratio_middle = -1
+            else:
+                block_reward_ratio_right = df_behaviortrial.reward_R.sum()/df_behaviortrial.reward.sum()
+                block_reward_ratio_left = df_behaviortrial.reward_L.sum()/df_behaviortrial.reward.sum()
+                block_reward_ratio_middle = df_behaviortrial.reward_M.sum()/df_behaviortrial.reward.sum()
+            
+            if df_behaviortrial.reward[:tertilelength].sum() == 0: #np.isnan(block_reward_ratio_first_tertile_differential):
+                block_reward_ratio_first_tertile_right = -1
+                block_reward_ratio_first_tertile_left = -1
+                block_reward_ratio_first_tertile_middle = -1
+            else:
+                block_reward_ratio_first_tertile_right = df_behaviortrial.reward_R[:tertilelength].sum()/df_behaviortrial.reward[:tertilelength].sum()
+                block_reward_ratio_first_tertile_left = df_behaviortrial.reward_L[:tertilelength].sum()/df_behaviortrial.reward[:tertilelength].sum()
+                block_reward_ratio_first_tertile_middle = df_behaviortrial.reward_M[:tertilelength].sum()/df_behaviortrial.reward[:tertilelength].sum()
+                
+            if df_behaviortrial.reward[tertilelength:2*tertilelength].sum() == 0: #np.isnan(block_reward_ratio_third_tertile_differential):
+                block_reward_ratio_second_tertile_right = -1
+                block_reward_ratio_second_tertile_left = -1
+                block_reward_ratio_second_tertile_middle = -1
+            else:
+                block_reward_ratio_second_tertile_right= df_behaviortrial.reward_R[tertilelength:2*tertilelength].sum()/df_behaviortrial.reward[tertilelength:2*tertilelength].sum()
+                block_reward_ratio_second_tertile_left = df_behaviortrial.reward_L[tertilelength:2*tertilelength].sum()/df_behaviortrial.reward[tertilelength:2*tertilelength].sum()
+                block_reward_ratio_second_tertile_middle = df_behaviortrial.reward_M[tertilelength:2*tertilelength].sum()/df_behaviortrial.reward[tertilelength:2*tertilelength].sum()
+            
+            if df_behaviortrial.reward[-tertilelength:].sum() == 0: #np.isnan(block_reward_ratio_second_tertile_differential):
+                block_reward_ratio_third_tertile_right = -1
+                block_reward_ratio_third_tertile_left = -1
+                block_reward_ratio_third_tertile_middle = -1
+            else:
+                block_reward_ratio_third_tertile_right  = df_behaviortrial.reward_R[-tertilelength:].sum()/df_behaviortrial.reward[-tertilelength:].sum()
+                block_reward_ratio_third_tertile_left = df_behaviortrial.reward_L[-tertilelength:].sum()/df_behaviortrial.reward[-tertilelength:].sum()
+                block_reward_ratio_third_tertile_middle = df_behaviortrial.reward_M[-tertilelength:].sum()/df_behaviortrial.reward[-tertilelength:].sum()
+            
+            
+            
+            key['block_reward_ratio'] = block_reward_ratio
+            key['block_reward_ratio_first_tertile'] = block_reward_ratio_first_tertile
+            key['block_reward_ratio_second_tertile'] = block_reward_ratio_second_tertile
+            key['block_reward_ratio_third_tertile'] = block_reward_ratio_third_tertile
+            key['block_reward_ratio_right'] = block_reward_ratio_right
+            key['block_reward_ratio_first_tertile_right'] = block_reward_ratio_first_tertile_right
+            key['block_reward_ratio_second_tertile_right'] = block_reward_ratio_second_tertile_right
+            key['block_reward_ratio_third_tertile_right'] = block_reward_ratio_third_tertile_right
+            
+            key['block_reward_ratio_left'] = block_reward_ratio_left
+            key['block_reward_ratio_first_tertile_left'] = block_reward_ratio_first_tertile_left
+            key['block_reward_ratio_second_tertile_left'] = block_reward_ratio_second_tertile_left
+            key['block_reward_ratio_third_tertile_left'] = block_reward_ratio_third_tertile_left
+            
+            key['block_reward_ratio_middle'] = block_reward_ratio_middle
+            key['block_reward_ratio_first_tertile_middle'] = block_reward_ratio_first_tertile_middle
+            key['block_reward_ratio_second_tertile_middle'] = block_reward_ratio_second_tertile_middle
+            key['block_reward_ratio_third_tertile_middle'] = block_reward_ratio_third_tertile_middle
+            
+            for i,(t_start,t_end) in enumerate(zip(block_reward_ratio_window_starts,block_reward_ratio_window_ends)):
+                if trialnum >= t_end and df_behaviortrial.reward[t_start:t_end].sum()>0:
+                    block_reward_ratios_incremental_r[i] = df_behaviortrial.reward_R[t_start:t_end].sum()/df_behaviortrial.reward[t_start:t_end].sum()
+                    block_reward_ratios_incremental_l[i] = df_behaviortrial.reward_L[t_start:t_end].sum()/df_behaviortrial.reward[t_start:t_end].sum()
+                    block_reward_ratios_incremental_m[i] = df_behaviortrial.reward_M[t_start:t_end].sum()/df_behaviortrial.reward[t_start:t_end].sum()
+            key['block_reward_ratios_incremental_right'] = block_reward_ratios_incremental_r
+            key['block_reward_ratios_incremental_left'] = block_reward_ratios_incremental_l
+            key['block_reward_ratios_incremental_middle'] = block_reward_ratios_incremental_m
+            
+
+
+        self.insert1(key,skip_duplicates=True)
+        
+@schema
+class BlockChoiceRatioNoBiasCheck(dj.Computed): # without bias check
+    definition = """ # value between 0 and 1 for left and 1 right choices, averaged over the whole block or a fraction of the block
+    -> experiment.SessionBlock
+    ---
+    block_choice_ratio_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_first_tertile_right = null: decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_second_tertile_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratio_third_tertile_right = null : decimal(8,4) # 0 = rest, 1 = right
+    block_choice_ratios_incremental_right = null: longblob
+    
+    block_choice_ratio_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_first_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_second_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratio_third_tertile_left = null: decimal(8,4) # 0 = rest, 1 = left
+    block_choice_ratios_incremental_left = null: longblob
+    
+    block_choice_ratio_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_first_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_second_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratio_third_tertile_middle = null: decimal(8,4) # 0 = rest, 1 = middle
+    block_choice_ratios_incremental_middle = null: longblob
+    """    
+    def make(self, key):
+        #%%
+       # warnings.filterwarnings("error")
+        block_reward_ratio_window_starts = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)-int(round(block_reward_ratio_increment_window/2))
+        block_reward_ratio_window_ends = np.arange(block_reward_ratio_increment_window/2,block_reward_ratio_increment_max,block_reward_ratio_increment_step,dtype = int)+int(round(block_reward_ratio_increment_window/2))
+        block_choice_ratios_incremental_right=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        block_choice_ratios_incremental_left=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        block_choice_ratios_incremental_middle=np.ones(len(block_reward_ratio_window_ends))*np.nan
+        
+        df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial() & key))
+        bias_check_block = int(SessionStats.fetch('session_biascheck_block'))
+        
+        df_behaviortrial['choice_L']=0
+        df_behaviortrial['choice_R']=0
+        df_behaviortrial['choice_M']=0
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'left'),'choice_L']=1
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'right'),'choice_R']=1
+        df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'middle'),'choice_M']=1
+        trialnum = len(df_behaviortrial)
+
+        if any(df_behaviortrial['block'] == int(y) for y in bias_check_block):#trialnum >15:
+            tertilelength = int(np.floor(trialnum /3))
+#%%
+            if df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum()>0:
+                key['block_choice_ratio_right'] = df_behaviortrial.choice_R.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                key['block_choice_ratio_left'] = df_behaviortrial.choice_L.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                key['block_choice_ratio_middle'] = df_behaviortrial.choice_M.sum()/(df_behaviortrial.choice_L.sum()+df_behaviortrial.choice_R.sum()+df_behaviortrial.choice_M.sum())
+                
+                if (df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())>0:
+                    key['block_choice_ratio_first_tertile_right'] = df_behaviortrial.choice_R[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                    key['block_choice_ratio_first_tertile_left'] = df_behaviortrial.choice_L[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                    key['block_choice_ratio_first_tertile_middle'] = df_behaviortrial.choice_M[:tertilelength].sum()/(df_behaviortrial.choice_L[:tertilelength].sum()+df_behaviortrial.choice_R[:tertilelength].sum()+df_behaviortrial.choice_M[:tertilelength].sum())
+                if (df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())>0:
+                    key['block_choice_ratio_second_tertile_right'] = df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                    key['block_choice_ratio_second_tertile_left'] = df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                    key['block_choice_ratio_second_tertile_middle'] = df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum()/(df_behaviortrial.choice_L[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_R[tertilelength:2*tertilelength].sum()+df_behaviortrial.choice_M[tertilelength:2*tertilelength].sum())
+                if (df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())>0:
+                    key['block_choice_ratio_third_tertile_right'] = df_behaviortrial.choice_R[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+                    key['block_choice_ratio_third_tertile_left'] = df_behaviortrial.choice_L[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+                    key['block_choice_ratio_third_tertile_middle'] = df_behaviortrial.choice_M[-tertilelength:].sum()/(df_behaviortrial.choice_L[-tertilelength:].sum()+df_behaviortrial.choice_R[-tertilelength:].sum()+df_behaviortrial.choice_M[-tertilelength:].sum())
+            for i,(t_start,t_end) in enumerate(zip(block_reward_ratio_window_starts,block_reward_ratio_window_ends)):
+                if trialnum >= t_end:
+                    block_choice_ratios_incremental_right[i] = df_behaviortrial.choice_R[t_start:t_end].sum()/(df_behaviortrial.choice_L[t_start:t_end].sum()+df_behaviortrial.choice_R[t_start:t_end].sum()+df_behaviortrial.choice_M[t_start:t_end].sum())
+                    block_choice_ratios_incremental_left[i] = df_behaviortrial.choice_L[t_start:t_end].sum()/(df_behaviortrial.choice_L[t_start:t_end].sum()+df_behaviortrial.choice_R[t_start:t_end].sum()+df_behaviortrial.choice_M[t_start:t_end].sum())
+                    block_choice_ratios_incremental_middle[i] = df_behaviortrial.choice_M[t_start:t_end].sum()/(df_behaviortrial.choice_L[t_start:t_end].sum()+df_behaviortrial.choice_R[t_start:t_end].sum()+df_behaviortrial.choice_M[t_start:t_end].sum())
+            key['block_choice_ratios_incremental_right'] = block_choice_ratios_incremental_right
+            key['block_choice_ratios_incremental_left'] = block_choice_ratios_incremental_left
+            key['block_choice_ratios_incremental_middle'] = block_choice_ratios_incremental_middle
+            #%%
+        try:
+            self.insert1(key,skip_duplicates=True)
+        except:
+            print('error with blockchoice ratio: '+str(key['subject_id']))
+            #print(key)     
+
+@schema
+class SessionMatchBias(dj.Computed): # bias check removed
+    definition = """
+    -> experimet.SessionBlock
+        
 @schema
 class BlockEfficiency(dj.Computed): # bias check excluded
     definition = """
