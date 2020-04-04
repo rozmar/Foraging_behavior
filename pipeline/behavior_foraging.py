@@ -54,30 +54,33 @@ class SessionStats(dj.Computed):
     definition = """
     -> experiment.Session
     ---
-    session_total_trial_num : int #number of trials
-    session_block_num : int #number of blocks, including bias check
-    session_block_num_nobiascheck : int # number of blocks, no bias check
-    session_hit_num : int #number of hits
-    session_hit_num_nobiascheck : int # number of hits without bias check
-    session_miss_num : int #number of misses
-    session_miss_num_nobiascheck: int # number of misses without bias check
-    session_ignore_num : int #number of ignores
-    session_ignore_num_nobiascheck : int #number of ignores without bias check
-    session_ignore_trial_nums = null : longblob #trial number of ignore trials
-    session_autowater_num : int #number of trials with autowaters
-    session_length : decimal(10, 4) #length of the session in seconds
-    session_bias_check_trial_num = null: int #number of bias check trials
-    session_1st_3_ignores = null : int #trialnum where the first three ignores happened in a row
-    session_1st_2_ignores = null : int #trialnum where the first three ignores happened in a row
-    session_1st_ignore = null : int #trialnum where the first ignore happened  
-    session_biascheck_block = null : int # the number of bias check blocks
+    session_total_trial_num             : int           # number of trials
+    session_block_num                   : int           # number of blocks, including bias check
+    session_block_num_nobiascheck       : int           # number of blocks, no bias check
+    session_hit_num                     : int           # number of hits
+    session_hit_num_nobiascheck         : int           # number of hits without bias check
+    session_miss_num                    : int           # number of misses
+    session_miss_num_nobiascheck        : int           # number of misses without bias check
+    session_ignore_num                  : int           # number of ignores
+    session_ignore_num_nobiascheck      : int           # number of ignores without bias check
+    session_ignore_trial_nums = null    : blob          # trial numbers of ignore trials
+    session_autowater_num               : int           # number of trials with autowaters
+    session_length                      : decimal(10, 4)# length of the session in seconds
+    session_bias_check_trial_num = null : int           # number of bias check trials
+    session_1st_3_ignores = null        : int           # trialnum where the first three ignores happened in a row
+    session_1st_2_ignores = null        : int           # trialnum where the first three ignores happened in a row
+    session_1st_ignore = null           : int           # trialnum where the first ignore happened  
+    session_biascheck_block_nums = null : blob          # the block numbers of bias check blocks
     """
     def make(self, key):
+        #%%
+        #key = {'subject_id': 467913, 'session': 17}
         keytoadd = key
+        #print(key)
         keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
         keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
-        keytoadd['session_biascheck_block'] = np.array([0])
-        keytoadd['session_biascheck_block'] = np.nan
+        keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num']
+        keytoadd['session_biascheck_block_nums'] = np.array([np.nan])
         keytoadd['session_hit_num'] = len(experiment.BehaviorTrial()&key&'outcome = "hit"')
         keytoadd['session_miss_num'] = len(experiment.BehaviorTrial()&key&'outcome = "miss"')
         keytoadd['session_ignore_num'] = len(experiment.BehaviorTrial()&key&'outcome = "ignore"')
@@ -108,19 +111,18 @@ class SessionStats(dj.Computed):
             
             # get the block num without bias check 03/25/20 NW
             p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('p_reward_left','p_reward_right','p_reward_middle')
-            keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num']
             p_reward_left = p_reward_left.astype(float)
             p_reward_right = p_reward_right.astype(float)
             p_reward_middle = p_reward_middle.astype(float)
             for i in range(keytoadd['session_block_num_nobiascheck']):
                 if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
                     keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num_nobiascheck']-1
-                    keytoadd['session_biascheck_block'] = np.append(keytoadd['session_biascheck_block'],i+1)
-            if len(keytoadd['session_biascheck_block'])>1 and math.isnan(keytoadd['session_biascheck_block'][0]):
-                keytoadd['session_biascheck_block'] = np.delete(keytoadd['session_biascheck_block'],0)
-        
+                    keytoadd['session_biascheck_block_nums'] = np.append(keytoadd['session_biascheck_block_nums'],i+1)
+            if len(keytoadd['session_biascheck_block_nums'])>1 and math.isnan(keytoadd['session_biascheck_block_nums'][0]):
+                keytoadd['session_biascheck_block_nums'] = np.delete(keytoadd['session_biascheck_block_nums'],0)
+        #%%
         self.insert1(keytoadd,skip_duplicates=True)
-  
+  #%%
 
 @schema # TODO do we need bias check here?
 class SessionRuns(dj.Computed):
@@ -453,47 +455,49 @@ class BlockChoiceRatioNoBiasCheck(dj.Computed): # without bias check
             print('error with blockchoice ratio: '+str(key['subject_id']))
             #print(key)     
 
-@schema
-class SessionMatchBias(dj.Computed): # bias check removed
-    definition = """
-    -> experimet.SessionBlock
-        
-@schema
-class BlockEfficiency(dj.Computed): # bias check excluded
-    definition = """
-    -> experiment.SessionBlock
-    ---
-    block_num_nobiascheck = null: int # block numbers of a given session without bias check
-    block_effi_one_preward =  null: decimal(8,4) # denominator = max of the reward assigned probability (no baiting)
-    block_effi_sum_preward =  null: decimal(8,4) # denominator = sum of the reward assigned probability (no baiting)
-    block_effi_one_areward =  null: decimal(8,4) # denominator = max of the reward assigned probability + baiting)
-    block_effi_sum_areward =  null: decimal(8,4) # denominator = sum of the reward assigned probability + baiting)
-    """
-    def make(self, key):
-        keytoinsert = key
-        block_num,p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('block','p_reward_left','p_reward_right','p_reward_middle')
-        block_num_nobiascheck = max(block_num)
-        p_reward_left = p_reward_left.astype(float)
-        p_reward_right = p_reward_right.astype(float)
-        p_reward_middle = p_reward_middle.astype(float)
-        for i in range(block_num_nobiascheck):
-            if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
-                block_num_nobiascheck = block_num_nobiascheck-1
-            else:
-                block_effi_one_preward_denominator = 
-                
-        
-        
-        
-        block_effi_one_preward_denominator = 
-        keytoinsert['block_effi_one_preward'] = len((experiment.SessionBlock() & key))
-        keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
-        try:
-            keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
-        except:
-            pass
-        self.insert1(keytoinsert,skip_duplicates=True)
-
+# =============================================================================
+# @schema
+# class SessionMatchBias(dj.Computed): # bias check removed
+#     definition = """
+#     -> experimet.SessionBlock
+#         
+# @schema
+# class BlockEfficiency(dj.Computed): # bias check excluded
+#     definition = """
+#     -> experiment.SessionBlock
+#     ---
+#     block_num_nobiascheck = null: int # block numbers of a given session without bias check
+#     block_effi_one_preward =  null: decimal(8,4) # denominator = max of the reward assigned probability (no baiting)
+#     block_effi_sum_preward =  null: decimal(8,4) # denominator = sum of the reward assigned probability (no baiting)
+#     block_effi_one_areward =  null: decimal(8,4) # denominator = max of the reward assigned probability + baiting)
+#     block_effi_sum_areward =  null: decimal(8,4) # denominator = sum of the reward assigned probability + baiting)
+#     """
+#     def make(self, key):
+#         keytoinsert = key
+#         block_num,p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('block','p_reward_left','p_reward_right','p_reward_middle')
+#         block_num_nobiascheck = max(block_num)
+#         p_reward_left = p_reward_left.astype(float)
+#         p_reward_right = p_reward_right.astype(float)
+#         p_reward_middle = p_reward_middle.astype(float)
+#         for i in range(block_num_nobiascheck):
+#             if (p_reward_left[i]==1) or (p_reward_right[i]==1) or (p_reward_middle[i]==1):
+#                 block_num_nobiascheck = block_num_nobiascheck-1
+#             else:
+#                 block_effi_one_preward_denominator = 
+#                 
+#         
+#         
+#         
+#         block_effi_one_preward_denominator = 
+#         keytoinsert['block_effi_one_preward'] = len((experiment.SessionBlock() & key))
+#         keytoinsert['block_ignore_num'] = len((experiment.BehaviorTrial() & key & 'outcome = "ignore"'))
+#         try:
+#             keytoinsert['block_reward_rate'] = len((experiment.BehaviorTrial() & key & 'outcome = "hit"')) / (len((experiment.BehaviorTrial() & key & 'outcome = "miss"')) + len((experiment.BehaviorTrial() & key & 'outcome = "hit"')))
+#         except:
+#             pass
+#         self.insert1(keytoinsert,skip_duplicates=True)
+# 
+# =============================================================================
 # something about bias?
 # reward rates for each block?
 # choice rates for each block?
