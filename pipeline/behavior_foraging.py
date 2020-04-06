@@ -73,6 +73,7 @@ class SessionStats(dj.Computed):
     definition = """
     -> experiment.Session
     ---
+
     session_total_trial_num : int #number of trials
     session_block_num : int #number of blocks, including bias check
     session_block_num_nobiascheck : int # number of blocks, no bias check
@@ -96,6 +97,7 @@ class SessionStats(dj.Computed):
 #%%
         #key = {'subject_id' : 467913, 'session' : 20}
         keytoadd = key
+        #print(key)
         keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
         keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
         keytoadd['session_biascheck_block'] = np.array([0])
@@ -134,7 +136,6 @@ class SessionStats(dj.Computed):
             keytoadd['session_ignore_num_nobiascheck'] = len(df_choices['outcome'][realtraining] == 'ignore')                    
             # get the block num without bias check 03/25/20 NW
             p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('p_reward_left','p_reward_right','p_reward_middle')
-            keytoadd['session_block_num_nobiascheck'] = keytoadd['session_block_num']
             p_reward_left = p_reward_left.astype(float)
             p_reward_right = p_reward_right.astype(float)
             p_reward_middle = p_reward_middle.astype(float)
@@ -147,9 +148,8 @@ class SessionStats(dj.Computed):
                     keytoadd['session_biascheck_block'] = np.delete(keytoadd['session_biascheck_block'],0)
             except:
                 pass
-#%%        
         self.insert1(keytoadd,skip_duplicates=True)
-  
+  #%%
 
 @schema # TODO do we need bias check here?
 class SessionRuns(dj.Computed):
@@ -731,6 +731,7 @@ class BlockEfficiency(dj.Computed): # bias check excluded
             keytoinsert['block_effi_sum_a_reward_third_tertile'] = BlockRewardRatio['block_reward_ratio_third_tertile']/sum_reward_available_third.mean()
                         
         self.insert1(keytoinsert,skip_duplicates=True)
+
 
 # something about bias?
 # reward rates for each block?
