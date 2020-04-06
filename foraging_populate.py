@@ -12,6 +12,12 @@ try:
             behavior_foraging.SessionStats().populate(**arguments)
             behavior_foraging.SessionRuns().populate(**arguments)
             behavior_foraging.SessionTaskProtocol().populate(**arguments)
+            behavior_foraging.BlockRewardRatioNoBiasCheck().populate(**arguments)
+            behavior_foraging.BlockChoiceRatioNoBiasCheck().populate(**arguments)
+            behavior_foraging.SessionMatchBias().populate(**arguments)
+            behavior_foraging.BlockEfficiency().populate(**arguments)   
+
+            
 except:
     pass
         
@@ -22,6 +28,11 @@ def populatemytables_core(arguments,runround):
         behavior_foraging.SessionStats().populate(**arguments)
         behavior_foraging.SessionRuns().populate(**arguments)
         behavior_foraging.SessionTaskProtocol().populate(**arguments)
+        behavior_foraging.BlockRewardRatioNoBiasCheck().populate(**arguments)
+        behavior_foraging.BlockChoiceRatioNoBiasCheck().populate(**arguments)
+        behavior_foraging.SessionMatchBias().populate(**arguments)
+        behavior_foraging.BlockEfficiency().populate(**arguments)   
+        
         
 def populatemytables(paralel = True, cores = 9):
     IDs = {k: v for k, v in zip(*lab.WaterRestriction().fetch('water_restriction_number', 'subject_id'))}              
