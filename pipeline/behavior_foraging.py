@@ -98,6 +98,7 @@ class SessionStats(dj.Computed):
 #%%
         #key = {'subject_id' : 467913, 'session' : 20}
         keytoadd = key
+        #print(key)
         keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
         keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
         keytoadd['session_biascheck_block'] = np.array([0])
@@ -152,9 +153,8 @@ class SessionStats(dj.Computed):
                     keytoadd['session_biascheck_block'] = np.delete(keytoadd['session_biascheck_block'],0)
             except:
                 pass
-#%%        
         self.insert1(keytoadd,skip_duplicates=True)
-  
+  #%%
 
 @schema # TODO do we need bias check here?
 class SessionRuns(dj.Computed):
@@ -1378,6 +1378,7 @@ class BlockEfficiency(dj.Computed): # bias check excluded
                 else:
                     keytoinsert['block_effi_sum_a_reward_third_tertile'] = np.nan
         self.insert1(keytoinsert,skip_duplicates=True)
+
 
 # something about bias?
 # reward rates for each block?
