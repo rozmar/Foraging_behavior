@@ -258,7 +258,7 @@ class SessionTaskProtocol(dj.Computed):
             self.insert1(key,skip_duplicates=True)
 
 @schema
-class BlockRewardRatioNoBiasCheck(dj.Computed): # without bias check
+class BlockRewardRatioNoBiasCheck(dj.Computed): # without bias check - Naming is WRONG it's FRACTION
     definition = """
     -> experiment.SessionBlock
     ---
