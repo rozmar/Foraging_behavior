@@ -157,7 +157,7 @@ class SessionStats(dj.Computed):
         self.insert1(keytoadd,skip_duplicates=True)
   
 
-@schema # TODO do we need bias check here?
+@schema # bias check and pretraining excluded
 class SessionRuns(dj.Computed):
     definition = """
     # a run is a sequence of trials when the mouse chooses the same option
@@ -175,12 +175,16 @@ class SessionRuns(dj.Computed):
     """
     def make(self, key):     
         #%
-        #key = {'subject_id':453475,'session':10}
-        df_choices = pd.DataFrame(experiment.BehaviorTrial()&key)
-        if len(df_choices)>10:
+        #key ={'subject_id': 455526, 'session': 5}
+        df_choices = pd.DataFrame(experiment.BehaviorTrial()*experiment.SessionBlock() & key)
+        realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
+        print(key)
+        df_choices = df_choices[realtraining == True]
+        df_choices = df_choices.reset_index()
+        if len(df_choices)>minimum_trial_per_block:            
             df_choices['run_choice'] = df_choices['trial_choice']
             ignores = np.where(df_choices['run_choice']=='none')[0]
-            if len(ignores)>0:
+            if len(ignores)>0 :
                 ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
                 ignores = ignores[ignoreblock.argmax():]
                 ignoreblock = ignoreblock[ignoreblock.argmax():]
