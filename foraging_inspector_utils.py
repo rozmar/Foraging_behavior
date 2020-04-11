@@ -351,6 +351,10 @@ def plot_efficiency_matching_bias(ax3,
         eff_text = 'block_effi_one_a_reward'
     elif plot_efficiency_type == 'sum_available':
         eff_text = 'block_effi_sum_a_reward'
+    elif plot_efficiency_type == 'ideal':
+        eff_text = 'block_ideal_phat_greedy'
+    elif plot_efficiency_type == 'ideal_regret':
+        eff_text = 'regret_ideal_phat_greedy'
     ax3.plot(df_blockefficiency['trialnum_block_middle'],df_blockefficiency[eff_text],'ko-')        
     session_switch_trial_nums = session_start_trial_nums.copy()
     session_switch_trial_nums.append(session_end_trial_nums[-1])
