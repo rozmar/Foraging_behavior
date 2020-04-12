@@ -164,81 +164,82 @@ class SessionRuns(dj.Computed):
     -> experiment.Session
     run_num : int # number of choice block
     ---
-    run_start : int # first trial #the switch itself
-    run_end : int # last trial #one trial before the next choice
-    run_choice : varchar(8) # left or right or middle
-    run_length : int # number of trials in this run
-    run_hits : int # number of hit trials
-    run_misses : int # number of miss trials
-    run_consecutive_misses: int # number of consecutive misses before switch
-    run_ignores : int # number of ignore trials
+    run_start = null: int # first trial #the switch itself
+    run_end = null: int # last trial #one trial before the next choice
+    run_choice = null: varchar(8) # left or right or middle
+    run_length = null: int # number of trials in this run
+    run_hits = null: int # number of hit trials
+    run_misses = null: int # number of miss trials
+    run_consecutive_misses = null: int # number of consecutive misses before switch
+    run_ignores = null: int # number of ignore trials
     """
     def make(self, key):     
         #%
-        #key ={'subject_id': 455526, 'session': 5}
-        df_choices = pd.DataFrame(experiment.BehaviorTrial()*experiment.SessionBlock() & key)
-        realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
+        #key = {'subject_id': 453478, 'session': 12}
         print(key)
-        df_choices = df_choices[realtraining == True]
-        df_choices = df_choices.reset_index()
-        if len(df_choices)>minimum_trial_per_block:            
-            df_choices['run_choice'] = df_choices['trial_choice']
-            ignores = np.where(df_choices['run_choice']=='none')[0]
-            if len(ignores)>0 :
-                ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
-                ignores = ignores[ignoreblock.argmax():]
-                ignoreblock = ignoreblock[ignoreblock.argmax():]
-                while any(ignoreblock):
-                    df_choices.loc[ignores[ignoreblock],'run_choice'] = df_choices.loc[ignores[ignoreblock]-1,'run_choice'].values
-                    ignores = np.where(df_choices['run_choice']=='none')[0]
+        df_choices = pd.DataFrame(experiment.BehaviorTrial()*experiment.SessionBlock() & key)
+        if len(df_choices)>0:
+            realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
+            df_choices = df_choices[realtraining == True]
+            df_choices = df_choices.reset_index()
+            if len(df_choices)>minimum_trial_per_block:            
+                df_choices['run_choice'] = df_choices['trial_choice']
+                ignores = np.where(df_choices['run_choice']=='none')[0]
+                if len(ignores)>0 :
                     ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
-                    try:
-                        ignores = ignores[ignoreblock.argmax():]
-                        ignoreblock = ignoreblock[ignoreblock.argmax():]
-                    except:
-                        ignoreblock = []
-
-            df_choices['run_choice_num'] = np.nan
-            df_choices.loc[df_choices['run_choice'] == 'left','run_choice_num'] = 0
-            df_choices.loc[df_choices['run_choice'] == 'right','run_choice_num'] = 1
-            df_choices.loc[df_choices['run_choice'] == 'middle','run_choice_num'] = 2
-            diffchoice = np.abs(np.diff(df_choices['run_choice_num']))
-            diffchoice[np.isnan(diffchoice)] = 0
-            switches = np.where(diffchoice>0)[0]
-            if any(np.where(df_choices['run_choice']=='none')[0]):
-                runstart = np.concatenate([[np.max(np.where(df_choices['run_choice']=='none')[0])+1],switches+1])
-            else:
-                runstart = np.concatenate([[0],switches+1])
-            runend = np.concatenate([switches,[len(df_choices)-1]])
-            columns = list(key.keys())
-            columns.extend(['run_num','run_start','run_end','run_choice','run_length','run_hits','run_misses','run_consecutive_misses','run_ignores'])
-            df_key = pd.DataFrame(data = np.zeros((len(runstart),len(columns))),columns = columns)
+                    ignores = ignores[ignoreblock.argmax():]
+                    ignoreblock = ignoreblock[ignoreblock.argmax():]
+                    while any(ignoreblock):
+                        df_choices.loc[ignores[ignoreblock],'run_choice'] = df_choices.loc[ignores[ignoreblock]-1,'run_choice'].values
+                        ignores = np.where(df_choices['run_choice']=='none')[0]
+                        ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
+                        try:
+                            ignores = ignores[ignoreblock.argmax():]
+                            ignoreblock = ignoreblock[ignoreblock.argmax():]
+                        except:
+                            ignoreblock = []
     
-            ## this is where I generate and insert the dataframe
-            for keynow in key.keys(): 
-                df_key[keynow] = key[keynow]
-            for run_num,(run_start,run_end) in enumerate(zip(runstart,runend)):
-                df_key.loc[run_num,'run_num'] = run_num + 1 
-                df_key.loc[run_num,'run_start'] = run_start +1 
-                df_key.loc[run_num,'run_end'] = run_end + 1 
-                try:
-                    df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
-                except:
-                    print('error in sessionruns')
-                    print(key)
-                    df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
-                df_key.loc[run_num,'run_length'] = run_end-run_start+1
-                df_key.loc[run_num,'run_hits'] = sum(df_choices['outcome'][run_start:run_end+1]=='hit')
-                df_key.loc[run_num,'run_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
-                #df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]=='miss').idxmax():run_end+1]=='miss')
-                if sum(df_choices['outcome'][run_start:run_end+1]=='miss') == len(df_choices['outcome'][run_start:run_end+1]=='miss'):
-                    df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
+                df_choices['run_choice_num'] = np.nan
+                df_choices.loc[df_choices['run_choice'] == 'left','run_choice_num'] = 0
+                df_choices.loc[df_choices['run_choice'] == 'right','run_choice_num'] = 1
+                df_choices.loc[df_choices['run_choice'] == 'middle','run_choice_num'] = 2
+                diffchoice = np.abs(np.diff(df_choices['run_choice_num']))
+                diffchoice[np.isnan(diffchoice)] = 0
+                switches = np.where(diffchoice>0)[0]
+                if any(np.where(df_choices['run_choice']=='none')[0]):
+                    runstart = np.concatenate([[np.max(np.where(df_choices['run_choice']=='none')[0])+1],switches+1])
                 else:
-                    df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]!='miss')[::-1].idxmax():run_end+1]=='miss')        
-                
-                df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
-                #%
-            self.insert(df_key.to_records(index=False))
+                    runstart = np.concatenate([[0],switches+1])
+                runend = np.concatenate([switches,[len(df_choices)-1]])
+                columns = list(key.keys())
+                columns.extend(['run_num','run_start','run_end','run_choice','run_length','run_hits','run_misses','run_consecutive_misses','run_ignores'])
+                df_key = pd.DataFrame(data = np.zeros((len(runstart),len(columns))),columns = columns)
+        
+                ## this is where I generate and insert the dataframe
+                for keynow in key.keys(): 
+                    df_key[keynow] = key[keynow]
+                for run_num,(run_start,run_end) in enumerate(zip(runstart,runend)):
+                    df_key.loc[run_num,'run_num'] = run_num + 1 
+                    df_key.loc[run_num,'run_start'] = run_start +1 
+                    df_key.loc[run_num,'run_end'] = run_end + 1 
+                    try:
+                        df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
+                    except:
+                        print('error in sessionruns')
+                        print(key)
+                        df_key.loc[run_num,'run_choice'] = df_choices['run_choice'][run_start]
+                    df_key.loc[run_num,'run_length'] = run_end-run_start+1
+                    df_key.loc[run_num,'run_hits'] = sum(df_choices['outcome'][run_start:run_end+1]=='hit')
+                    df_key.loc[run_num,'run_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
+                    #df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]=='miss').idxmax():run_end+1]=='miss')
+                    if sum(df_choices['outcome'][run_start:run_end+1]=='miss') == len(df_choices['outcome'][run_start:run_end+1]=='miss'):
+                        df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][run_start:run_end+1]=='miss')
+                    else:
+                        df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]!='miss')[::-1].idxmax():run_end+1]=='miss')        
+                    
+                    df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
+                self.insert(df_key.to_records(index=False))
+        
             
             
 @schema
