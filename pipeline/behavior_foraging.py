@@ -1011,7 +1011,57 @@ class BlockEfficiency(dj.Computed): # bias check excluded
                 
 
         self.insert1(keytoinsert,skip_duplicates=True)
+        
+@schema
+class BlockMaxProportion(dj.Computed): # remove bias check
+    definition = """ # value between 0 and 1
+    -> experiment.SessionBlock
+    ---
+    block_proportion_choosing_max_first_tertile = null : decimal(8,4) # 0 = rest, 1 = right
+    block_proportion_choosing_max_second_tertile = null : decimal(8,4) # 0 = rest, 1 = right
+    block_proportion_choosing_max_third_tertile = null : decimal(8,4) # 0 = rest, 1 = right
+    """    
+    def make(self, key):
+        #%%
+       # warnings.filterwarnings("error")
+       # key = {'subject_id': 447921, 'session': 30, 'block': 5}
+       print(key)
+        
+       df_behaviortrial = pd.DataFrame((experiment.BehaviorTrial()*experiment.SessionBlock()) & key)
+       realtraining = (df_behaviortrial['p_reward_left']<1) & (df_behaviortrial['p_reward_right']<1) & ((df_behaviortrial['p_reward_middle']<1) | df_behaviortrial['p_reward_middle'].isnull())
+       if realtraining[0] == True and len(df_behaviortrial) > minimum_trial_per_block:
+           p_reward_left,p_reward_right,p_reward_middle = (experiment.SessionBlock() & key).fetch('p_reward_left','p_reward_right','p_reward_middle')
+           p_reward_left = p_reward_left.astype(float)
+           p_reward_right = p_reward_right.astype(float)
+           p_reward_middle = p_reward_middle.astype(float)
+           max_prob_reward = np.nanmax([p_reward_left,p_reward_right,p_reward_middle])
+           trialnum = len(df_behaviortrial)
+           tertilelength = int(np.floor(trialnum /3))
+           df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'left'),'choice_L']=1
+           df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'right'),'choice_R']=1
+           df_behaviortrial.loc[(df_behaviortrial['trial_choice'] == 'middle'),'choice_M']=1           
+           df_behaviortrial.loc[(df_behaviortrial['p_reward_left'].astype(float) == max_prob_reward), 'correct_L'] = 1
+           df_behaviortrial.loc[(df_behaviortrial['p_reward_right'].astype(float) == max_prob_reward), 'correct_R'] = 1
+           df_behaviortrial.loc[(df_behaviortrial['p_reward_middle'].astype(float) == max_prob_reward), 'correct_M'] = 1
+           
+           count_choosing_max_L = df_behaviortrial.choice_L * df_behaviortrial.correct_L
+           count_choosing_max_R = df_behaviortrial.choice_R * df_behaviortrial.correct_R
+           count_choosing_max_M = df_behaviortrial.choice_M * df_behaviortrial.correct_M
+           choosing_L_first_tertile = count_choosing_max_L[:tertilelength].sum()/tertilelength
+           choosing_R_first_tertile = count_choosing_max_R[:tertilelength].sum()/tertilelength           
+           choosing_M_first_tertile = count_choosing_max_M[:tertilelength].sum()/tertilelength           
+           key['block_proportion_choosing_max_first_tertile'] = np.nanmax([choosing_L_first_tertile,choosing_R_first_tertile,choosing_M_first_tertile])
+        
+           choosing_L_second_tertile = count_choosing_max_L[tertilelength:2*tertilelength].sum()/tertilelength
+           choosing_R_second_tertile = count_choosing_max_R[tertilelength:2*tertilelength].sum()/tertilelength           
+           choosing_M_second_tertile = count_choosing_max_M[tertilelength:2*tertilelength].sum()/tertilelength           
+           key['block_proportion_choosing_max_second_tertile'] = np.nanmax([choosing_L_second_tertile,choosing_R_second_tertile,choosing_M_second_tertile])
+         
+           choosing_L_third_tertile = count_choosing_max_L[-tertilelength:].sum()/tertilelength
+           choosing_R_third_tertile = count_choosing_max_R[-tertilelength:].sum()/tertilelength           
+           choosing_M_third_tertile = count_choosing_max_M[-tertilelength:].sum()/tertilelength           
+           key['block_proportion_choosing_max_third_tertile'] = np.nanmax([choosing_L_third_tertile,choosing_R_third_tertile,choosing_M_third_tertile])
+           
+    
+       self.insert1(key,skip_duplicates=True)
 
-# something about bias?
-# reward rates for each block?
-# choice rates for each block?
