@@ -99,6 +99,7 @@ class SessionStats(dj.Computed):
 #%%
         #key = {'subject_id' : 467913, 'session' : 20}
         keytoadd = key
+        #print(key)
         keytoadd['session_total_trial_num'] = len(experiment.SessionTrial()&key)
         keytoadd['session_block_num'] = len(experiment.SessionBlock()&key)
         keytoadd['session_biascheck_block'] = np.array([0])
@@ -153,9 +154,8 @@ class SessionStats(dj.Computed):
                     keytoadd['session_biascheck_block'] = np.delete(keytoadd['session_biascheck_block'],0)
             except:
                 pass
-#%%        
         self.insert1(keytoadd,skip_duplicates=True)
-  
+  #%%
 
 @schema # bias check and pretraining excluded
 class SessionRuns(dj.Computed):
@@ -264,7 +264,7 @@ class SessionTaskProtocol(dj.Computed):
             self.insert1(key,skip_duplicates=True)
 
 @schema
-class BlockRewardRatioNoBiasCheck(dj.Computed): # without bias check
+class BlockRewardRatioNoBiasCheck(dj.Computed): # without bias check - Naming is WRONG it's FRACTION
     definition = """
     -> experiment.SessionBlock
     ---
