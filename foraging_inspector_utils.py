@@ -54,17 +54,26 @@ def extract_trials(plottype = '2lickport',
                    sessions = (5,11),
                    show_bias_check_trials = True,
                    kernel = np.ones(10)/10,
-                   filters=None):
+                   filters=None,
+                   local_matching = {'calculate_local_matching':False}):
     
 #%%
 # =============================================================================
 #     plottype = '2lickport'
 #     wr_name = 'FOR11'
 #     sessions = (25,46)
-#     show_bias_check_trials = True
+#     show_bias_check_trials = False
 #     kernel = np.ones(20)/20
-#     filters = {'ignore_rate_max':500}
+#     filters = {'ignore_rate_max':40}
+#     local_matching = {'calculate_local_matching': True,
+#                      'sliding_window':50,
+#                      'matching_window':500,
+#                      'matching_step':100}
 # =============================================================================
+    
+    movingwindow = local_matching['sliding_window']
+    fit_window = local_matching['matching_window']
+    fit_step = local_matching['matching_step']
     
     subject_id = (lab.WaterRestriction()&'water_restriction_number = "{}"'.format(wr_name)).fetch1('subject_id')
     
@@ -135,9 +144,58 @@ def extract_trials(plottype = '2lickport',
         realtraining = (df_behaviortrial['p_reward_left']<1) & (df_behaviortrial['p_reward_right']<1) & ((df_behaviortrial['p_reward_middle']<1) | df_behaviortrial['p_reward_middle'].isnull())
         df_behaviortrial = df_behaviortrial[realtraining]
         df_behaviortrial = df_behaviortrial.reset_index(drop=True)
+        
+        
+    #%% calculating local matching, bias, reward rate
+
+    kernel = np.ones(movingwindow)/movingwindow
+    p1 = np.asarray(np.max([df_behaviortrial['p_reward_right'],df_behaviortrial['p_reward_left']],0),float)
+    p0 = np.asarray(np.min([df_behaviortrial['p_reward_right'],df_behaviortrial['p_reward_left']],0),float)
+    m_star_greedy = np.floor(np.log(1-p1)/np.log(1-p0))
+    p_star_greedy = p1 + (1-(1-p0)**(m_star_greedy+1)-p1**2)/(m_star_greedy+1)
+    local_reward_rate = np.convolve(df_behaviortrial['outcome']=='hit',kernel,'same')
+    max_reward_rate = np.convolve(p_star_greedy,kernel,'same')
+    local_efficiency = local_reward_rate/max_reward_rate
+    choice_right = np.asarray(df_behaviortrial['trial_choice']=='right')
+    choice_left = np.asarray(df_behaviortrial['trial_choice']=='left')
+    choice_middle = np.asarray(df_behaviortrial['trial_choice']=='middle')
+    
+    reward_rate_right =np.asarray((df_behaviortrial['trial_choice']=='right') &(df_behaviortrial['outcome']=='hit'))
+    reward_rate_left =np.asarray((df_behaviortrial['trial_choice']=='left') &(df_behaviortrial['outcome']=='hit'))
+    reward_rate_middle =np.asarray((df_behaviortrial['trial_choice']=='middle') &(df_behaviortrial['outcome']=='hit'))
+    
+# =============================================================================
+#     choice_fraction_right = np.convolve(choice_right,kernel,'same')/np.convolve(choice_right+choice_left+choice_middle,kernel,'same')
+#     reward_fraction_right = np.convolve(reward_rate_right,kernel,'same')/local_reward_rate
+# =============================================================================
+    choice_rate_right= np.convolve(choice_right,kernel,'same')/np.convolve(choice_left+choice_middle,kernel,'same')
+    reward_rate_right = np.convolve(reward_rate_right,kernel,'same')/np.convolve(reward_rate_left+reward_rate_middle,kernel,'same')
+    slopes = list()
+    intercepts = list()
+    trial_number = list()
+    for center_trial in np.arange(np.round(fit_window/2),len(df_behaviortrial),fit_step):
+        #%
+        reward_rates_now = reward_rate_right[int(np.round(center_trial-fit_window/2)):int(np.round(center_trial+fit_window/2))]
+        choice_rates_now = choice_rate_right[int(np.round(center_trial-fit_window/2)):int(np.round(center_trial+fit_window/2))]
+        todel = (reward_rates_now==0) | (choice_rates_now==0)
+        reward_rates_now = reward_rates_now[~todel]
+        choice_rates_now = choice_rates_now[~todel]
+        try:
+            slope_now, intercept_now = np.polyfit(np.log2(reward_rates_now), np.log2(choice_rates_now), 1)
+            slopes.append(slope_now)
+            intercepts.append(intercept_now)
+            trial_number.append(center_trial)
+        except:
+            pass
+        
+        
+    df_behaviortrial['local_efficiency']=local_efficiency
+    df_behaviortrial['local_matching_slope'] = np.nan
+    df_behaviortrial['local_matching_slope'][trial_number]=slopes
+    df_behaviortrial['local_matching_bias'] = np.nan
+    df_behaviortrial['local_matching_bias'][trial_number]=intercepts
     #%%
     return df_behaviortrial
-
 
 
 def plot_rt_iti(df_behaviortrial,
@@ -222,7 +280,7 @@ def plot_rt_iti(df_behaviortrial,
             ax2.plot([df_behaviortrial['trial'][trialnum_now],df_behaviortrial['trial'][trialnum_now]],[0,1000],'b--')    
     
     
-    delay_smoothed = np.asarray(pd.DataFrame(np.asarray(df_behaviortrial['delay'].values,float)).interpolate().values.ravel().tolist())*1000
+    delay_smoothed = np.asarray(pd.DataFrame(np.asarray(df_behaviortrial['delay'].values,float)).interpolate().values.ravel().tolist())
     delay_smoothed  = np.convolve(delay_smoothed ,kernel,'same')
     ax1.plot(df_behaviortrial['trial'],df_behaviortrial['reaction_time_smoothed'],'k-')#np.convolve(RT,kernel,'same')
     ax1.plot(df_behaviortrial['trial'],delay_smoothed,'m-') #np.convolve(df_behaviortrial['delay'],kernel,'same')
@@ -489,4 +547,36 @@ def plot_efficiency_matching_bias(ax3,
     multicolor_ylabel(ax3,('Efficiency', ' Matching '),('r','k'),axis='y',size=12)
     #%%
     return ax3
+
+
+def plot_local_efficiency_matching_bias(df_behaviortrial,ax3):
+    #%%
+# =============================================================================
+#     fig=plt.figure()
+#     ax3=fig.add_axes([0,0,2,.8])
+# =============================================================================
     
+    
+    ax3.plot(df_behaviortrial['trial'],df_behaviortrial['local_efficiency'],'k-')     
+    blockswitches = np.where(np.diff(df_behaviortrial['session'].values)>0)[0]
+    if len(blockswitches)>0:
+        for trialnum_now in blockswitches:
+            ax3.plot([df_behaviortrial['trial'][trialnum_now],df_behaviortrial['trial'][trialnum_now]],[-.15,1.15],'b--')
+     
+
+   #%
+    trialnums = df_behaviortrial.loc[~np.isnan(df_behaviortrial['local_matching_slope']),'trial']
+    local_matching_slope = df_behaviortrial.loc[~np.isnan(df_behaviortrial['local_matching_slope']),'local_matching_slope']
+    local_matching_bias = df_behaviortrial.loc[~np.isnan(df_behaviortrial['local_matching_slope']),'local_matching_bias']
+    ax3.plot(trialnums,local_matching_slope,'ro-')
+    ax3.set_ylim([-.1,1.1])
+    ax33 = ax3.twinx()
+    ax33.plot(trialnums,local_matching_bias,'yo-')
+    ax33.set_ylim(np.asarray([-1.1,1.1])*np.nanmin([np.nanmax(np.abs(local_matching_bias)),4]))
+    ax33.set_ylabel('Bias',color='y')
+    ax33.spines["right"].set_color("yellow")
+    ax3.set_xlim([np.min(df_behaviortrial['trial'])-10,np.max(df_behaviortrial['trial'])+10]) 
+    #ax33.tick_params(axis='y', colors='yellow')
+    multicolor_ylabel(ax3,('Efficiency', ' Matching '),('r','k'),axis='y',size=12)
+    #%%
+    return ax3
