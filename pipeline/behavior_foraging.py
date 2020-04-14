@@ -1065,3 +1065,4 @@ class BlockMaxProportion(dj.Computed): # remove bias check
     
        self.insert1(key,skip_duplicates=True)
 
+#Done?
