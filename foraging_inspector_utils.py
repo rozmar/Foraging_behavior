@@ -148,7 +148,7 @@ def extract_trials(plottype = '2lickport',
         df_behaviortrial = df_behaviortrial.reset_index(drop=True)
         
         
-    #%% calculating local matching, bias, reward rate
+    #% calculating local matching, bias, reward rate
 
     kernel = np.ones(movingwindow)/movingwindow
     p1 = np.asarray(np.max([df_behaviortrial['p_reward_right'],df_behaviortrial['p_reward_left']],0),float)
@@ -199,6 +199,7 @@ def extract_trials(plottype = '2lickport',
     #%%
     return df_behaviortrial
 
+#%%
 
 def plot_rt_iti(df_behaviortrial,
                 ax1,
