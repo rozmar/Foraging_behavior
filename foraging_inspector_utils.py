@@ -130,8 +130,10 @@ def extract_trials(plottype = '2lickport',
         
         if type(filters) == dict:
             max_idx = (df_behaviortrial.loc[df_behaviortrial['session']==session, 'ignore_rate'] > filters['ignore_rate_max']/100).idxmax()
+            
+            session_first_trial_idx = (df_behaviortrial['session']==session).idxmax()
             #print(max_idx)
-            if max_idx>(df_behaviortrial['session']==session).idxmax():
+            if max_idx > session_first_trial_idx or df_behaviortrial['ignore_rate'][session_first_trial_idx] > filters['ignore_rate_max']/100:
                 df_behaviortrial.loc[df_behaviortrial.index.isin(np.arange(max_idx,len(df_behaviortrial))) & (df_behaviortrial['session']==session),'keep_trial']=0
 
 #%
