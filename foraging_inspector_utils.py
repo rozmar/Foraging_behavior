@@ -193,9 +193,9 @@ def extract_trials(plottype = '2lickport',
         
     df_behaviortrial['local_efficiency']=local_efficiency
     df_behaviortrial['local_matching_slope'] = np.nan
-    df_behaviortrial['local_matching_slope'][trial_number]=slopes
+    df_behaviortrial.loc[trial_number,'local_matching_slope']=slopes
     df_behaviortrial['local_matching_bias'] = np.nan
-    df_behaviortrial['local_matching_bias'][trial_number]=intercepts
+    df_behaviortrial.loc[trial_number,'local_matching_bias']=intercepts
     #%%
     return df_behaviortrial
 
