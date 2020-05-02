@@ -2311,4 +2311,5 @@ class SessionPerformance(dj.Computed):     # works only for left-right ... needs
                 print('couldn''t calculate performance for the following:')
                 print(key)
     
-           # just to see if I cloned to the fork or not 
+           # just to see if I cloned to the fork or not
+           # another test
