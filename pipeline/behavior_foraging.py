@@ -157,7 +157,7 @@ class SessionStats(dj.Computed):
         self.insert1(keytoadd,skip_duplicates=True)
   #%%
 
-@schema # bias check and pretraining excluded
+@schema # bias check and pretraining excluded and the last run, the block preference is defined as the start of the run
 class SessionRuns(dj.Computed):
     definition = """
     # a run is a sequence of trials when the mouse chooses the same option
@@ -172,18 +172,31 @@ class SessionRuns(dj.Computed):
     run_misses = null: int # number of miss trials
     run_consecutive_misses = null: int # number of consecutive misses before switch
     run_ignores = null: int # number of ignore trials
+    run_length_rich = null: int# number of trials for choices of the rich side
+    run_length_lean = null: int# number of trials for choices of the lean side
+    run_preference = null: decimal(8,4)# the relative responses from each block (# rich choices/# lean choices)  
+    rich_choice = null: int# if the chosen side is the rich side
     """
     def make(self, key):     
         #%
-        #key = {'subject_id': 453478, 'session': 12}
+        #key = {'subject_id': 455525, 'session': 20}
         print(key)
+        #%%
         df_choices = pd.DataFrame(experiment.BehaviorTrial()*experiment.SessionBlock() & key)
         if len(df_choices)>0:
             realtraining = (df_choices['p_reward_left']<1) & (df_choices['p_reward_right']<1) & ((df_choices['p_reward_middle']<1) | df_choices['p_reward_middle'].isnull())
             df_choices = df_choices[realtraining == True]
             df_choices = df_choices.reset_index()
-            if len(df_choices)>minimum_trial_per_block:            
-                df_choices['run_choice'] = df_choices['trial_choice']
+            if len(df_choices)>minimum_trial_per_block: 
+                p_reward_left = df_choices['p_reward_left']
+                p_reward_right = df_choices['p_reward_right']
+                p_reward_middle = df_choices['p_reward_middle']
+                p_reward_left = p_reward_left.astype(float)
+                p_reward_right = p_reward_right.astype(float)
+                p_reward_middle = p_reward_middle.astype(float)
+                where_are_NaNs = np.isnan(p_reward_middle)
+                p_reward_middle[where_are_NaNs] = 0
+                df_choices['run_choice'] = df_choices['trial_choice']                
                 ignores = np.where(df_choices['run_choice']=='none')[0]
                 if len(ignores)>0 :
                     ignoreblock = np.diff(np.concatenate([[0],ignores]))>1
@@ -198,23 +211,61 @@ class SessionRuns(dj.Computed):
                             ignoreblock = ignoreblock[ignoreblock.argmax():]
                         except:
                             ignoreblock = []
-    
+                df_choices['block_preference'] = np.nan
                 df_choices['run_choice_num'] = np.nan
+                df_choices['rich_choice'] = np.nan # if mouse pickes the "correct" side, this value will be 1
                 df_choices.loc[df_choices['run_choice'] == 'left','run_choice_num'] = 0
                 df_choices.loc[df_choices['run_choice'] == 'right','run_choice_num'] = 1
                 df_choices.loc[df_choices['run_choice'] == 'middle','run_choice_num'] = 2
+                for trial in range(len(p_reward_left)):
+                    if p_reward_left[trial] > p_reward_right[trial] and p_reward_left[trial] > p_reward_middle[trial] and df_choices['run_choice_num'][trial] ==0:
+                        df_choices.loc[trial,'rich_choice'] = 1
+                    elif p_reward_right[trial] > p_reward_left[trial] and p_reward_right[trial] > p_reward_middle[trial] and df_choices['run_choice_num'][trial] ==1:
+                        df_choices.loc[trial,'rich_choice'] = 1
+                    elif p_reward_middle[trial] > p_reward_left[trial] and p_reward_middle[trial] > p_reward_right[trial] and df_choices['run_choice_num'][trial] ==2:
+                        df_choices.loc[trial,'rich_choice'] = 1
+                    #elif 
+                    else:
+                        df_choices.loc[trial,'rich_choice'] = 0
                 diffchoice = np.abs(np.diff(df_choices['run_choice_num']))
                 diffchoice[np.isnan(diffchoice)] = 0
                 switches = np.where(diffchoice>0)[0]
+                #if 
                 if any(np.where(df_choices['run_choice']=='none')[0]):
                     runstart = np.concatenate([[np.max(np.where(df_choices['run_choice']=='none')[0])+1],switches+1])
                 else:
                     runstart = np.concatenate([[0],switches+1])
                 runend = np.concatenate([switches,[len(df_choices)-1]])
                 columns = list(key.keys())
-                columns.extend(['run_num','run_start','run_end','run_choice','run_length','run_hits','run_misses','run_consecutive_misses','run_ignores'])
+                columns.extend(['run_num','run_start','run_end','run_choice','run_length','run_hits','run_misses','run_consecutive_misses','run_ignores','rich_choice','run_length_rich','run_length_lean','run_preference'])
                 df_key = pd.DataFrame(data = np.zeros((len(runstart),len(columns))),columns = columns)
-        
+                block_switch = np.abs(np.diff(df_choices['block']))
+                block_switch[np.isnan(block_switch)] = 0
+                block_switches = np.where(block_switch>0)[0]
+                #%%
+                if len(block_switches)>0:
+                    for block_switch_trial in range(len(block_switches)):
+                        if block_switch_trial ==0:
+                            if (block_switches[block_switch_trial]+1-sum(df_choices['rich_choice'][:block_switches[block_switch_trial]+1])) != 0:
+                                df_choices.loc[range(0,block_switches[block_switch_trial]+1),'block_preference'] = sum(df_choices.loc[range(0,block_switches[block_switch_trial]+1),'rich_choice'])/(block_switches[block_switch_trial]+1-sum(df_choices['rich_choice'][:block_switches[block_switch_trial]+1]))
+                        else:
+                            if (block_switches[block_switch_trial]-block_switches[block_switch_trial-1]-sum(df_choices['rich_choice'][block_switches[block_switch_trial-1]+1:block_switches[block_switch_trial]+1])) != 0:
+                                df_choices.loc[range(block_switches[block_switch_trial-1]+1,block_switches[block_switch_trial]+1),'block_preference'] = sum(df_choices.loc[range(block_switches[block_switch_trial-1]+1,block_switches[block_switch_trial]+1),'rich_choice'])/(block_switches[block_switch_trial]-block_switches[block_switch_trial-1]-sum(df_choices.loc[range(block_switches[block_switch_trial-1]+1,block_switches[block_switch_trial]+1),'rich_choice']))
+                    if (len(df_choices)-1-block_switches[-1]-sum(df_choices['rich_choice'][block_switches[-1]+1:])) !=0:
+                        df_choices.loc[range(block_switches[-1]+1,len(df_choices)),'block_preference'] = sum(df_choices.loc[range(block_switches[-1]+1,len(df_choices)),'rich_choice'])/(len(df_choices)-1-block_switches[-1]-sum(df_choices.loc[range(block_switches[-1]+1,len(df_choices)),'rich_choice']))
+                else:
+                    if (len(df_choices)-sum(df_choices.loc[:,'rich_choice']))!= 0:
+                        df_choices.loc[:,'block_preference'] = sum(df_choices.loc[:,'rich_choice'])/(len(df_choices)-sum(df_choices.loc[:,'rich_choice']))
+
+                #%%
+                for each_runstart in range(1, len(runstart)):
+                    if df_choices['rich_choice'][runstart[each_runstart]-1] ==1: # if it's the rich side
+                        df_key.loc[each_runstart-1,'rich_choice'] = 1
+                    else:
+                        df_key.loc[each_runstart-1,'rich_choice'] = 0
+                    df_key.loc[each_runstart-1,'run_preference'] = df_choices['block_preference'][runstart[each_runstart-1]]
+                df_key.loc[len(runstart)-1,'run_preference']= df_choices.loc[runstart[len(runstart)-1],'block_preference']
+        #%%
                 ## this is where I generate and insert the dataframe
                 for keynow in key.keys(): 
                     df_key[keynow] = key[keynow]
@@ -238,6 +289,17 @@ class SessionRuns(dj.Computed):
                         df_key.loc[run_num,'run_consecutive_misses'] = sum(df_choices['outcome'][(df_choices['outcome'][run_start:run_end+1]!='miss')[::-1].idxmax():run_end+1]=='miss')        
                     
                     df_key.loc[run_num,'run_ignores'] = sum(df_choices['outcome'][run_start:run_end+1]=='ignore')
+                    #%% 04/30/2020 NT: add run_length_rich and lean and preference
+                    for run in range(len(df_key)):
+                        if df_key.loc[run,'rich_choice']==1:
+                            df_key.loc[run,'run_length_rich'] = df_key.loc[run,'run_length']
+                        elif df_key.loc[run,'rich_choice'] ==0:
+                            df_key.loc[run,'run_length_lean'] = df_key.loc[run,'run_length']
+                        else:
+                            pass
+                    #df_key.drop(df_key.tail(1).index,inplace=True)
+                    #%%
+                     
                 self.insert(df_key.to_records(index=False))
         
             
