@@ -1,9 +1,8 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import datajoint as dj
 from pipeline import pipeline_tools, lab, experiment, behavior_foraging
 import numpy as np
 #dj.conn()
+
 
 #%%
 def merge_dataframes_with_nans(df_1,df_2,basiscol):
@@ -57,20 +56,6 @@ def extract_trials(plottype = '2lickport',
                    filters=None,
                    local_matching = {'calculate_local_matching':False}):
     
-#%%
-# =============================================================================
-#     plottype = '2lickport'
-#     wr_name = 'FOR11'
-#     sessions = (25,46)
-#     show_bias_check_trials = False
-#     kernel = np.ones(20)/20
-#     filters = {'ignore_rate_max':40}
-#     local_matching = {'calculate_local_matching': True,
-#                      'sliding_window':50,
-#                      'matching_window':500,
-#                      'matching_step':100}
-# =============================================================================
-    
     movingwindow = local_matching['sliding_window']
     fit_window = local_matching['matching_window']
     fit_step = local_matching['matching_step']
@@ -115,7 +100,7 @@ def extract_trials(plottype = '2lickport',
         df_behaviortrial['keep_trial']=1
     for session in unique_sessions:
         total_trials_so_far = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session < {}'.format(session)).fetch('session_total_trial_num')
-        bias_check_trials_now = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session = {}'.format(session)).fetch1('session_bias_check_trial_num')
+        # bias_check_trials_now = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session = {}'.format(session)).fetch1('session_bias_check_trial_num')
         total_trials_so_far =sum(total_trials_so_far)
         gotime  = df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial_event_time']
         trialtime  = df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial_start_time']
@@ -210,71 +195,6 @@ def plot_rt_iti(df_behaviortrial,
                 show_bias_check_trials = True,
                 kernel = np.ones(10)/10):
     
-    
-    #%%
-# =============================================================================
-#     fig=plt.figure()
-#     ax1=fig.add_axes([0,0,2,.8])
-#     ax2=fig.add_axes([0,-1,2,.8])
-#     plottype = '2lickport'
-#     wr_name = 'FOR11'
-#     sessions = (25,46)
-#     show_bias_check_trials = True
-#     kernel = np.ones(20)/20
-# =============================================================================
-    
-    
-# =============================================================================
-#     subject_id = (lab.WaterRestriction()&'water_restriction_number = "{}"'.format(wr_name)).fetch1('subject_id')
-#     
-#     df_behaviortrial = pd.DataFrame(np.asarray((experiment.BehaviorTrial()* experiment.SessionTrial()*experiment.TrialEvent() *experiment.SessionBlock() *behavior_foraging.TrialReactionTime &
-#                                     'subject_id = {}'.format(subject_id) &
-#                                     'session >= {}'.format(sessions[0]) &
-#                                     'session <= {}'.format(sessions[1]) &
-#                                     'trial_event_type = "go"').fetch('session',
-#                                                              'trial',
-#                                                              'early_lick',
-#                                                              'trial_start_time',
-#                                                              'reaction_time',
-#                                                              'p_reward_left',
-#                                                              'p_reward_right',
-#                                                              'p_reward_middle',
-#                                                              'trial_event_time',
-#                                                              'outcome'
-#                                                              )).T,columns = ['session',
-#                                                                              'trial',
-#                                                                              'early_lick',
-#                                                                              'trial_start_time',
-#                                                                              'reaction_time',
-#                                                                              'p_reward_left',
-#                                                                              'p_reward_right',
-#                                                                              'p_reward_middle',
-#                                                                              'trial_event_time',
-#                                                                              'outcome'])
-# 
-#     unique_sessions = df_behaviortrial['session'].unique()
-#     df_behaviortrial['iti']=np.nan
-#     df_behaviortrial['delay']=np.nan
-#     df_behaviortrial['early_count']=0
-#     df_behaviortrial.loc[df_behaviortrial['early_lick']=='early', 'early_count'] = 1
-#     for session in unique_sessions:
-#         total_trials_so_far = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session < {}'.format(session)).fetch('session_total_trial_num')
-#         bias_check_trials_now = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session = {}'.format(session)).fetch1('session_bias_check_trial_num')
-#         total_trials_so_far =sum(total_trials_so_far)
-#         gotime  = df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial_event_time']
-#         trialtime  = df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial_start_time']
-#         itis = np.concatenate([[np.nan],np.diff(np.asarray(trialtime+gotime,float))])
-#         df_behaviortrial.loc[df_behaviortrial['session']==session, 'iti'] = itis
-#         df_behaviortrial.loc[df_behaviortrial['session']==session, 'delay'] = np.asarray(gotime,float)
-#         
-# 
-#         df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial'] += total_trials_so_far
-#     
-#     if not show_bias_check_trials:
-#         realtraining = (df_behaviortrial['p_reward_left']<1) & (df_behaviortrial['p_reward_right']<1) & ((df_behaviortrial['p_reward_middle']<1) | df_behaviortrial['p_reward_middle'].isnull())
-#         df_behaviortrial = df_behaviortrial[realtraining]
-#         df_behaviortrial = df_behaviortrial.reset_index(drop=True)
-# =============================================================================
         
     blockswitches = np.where(np.diff(df_behaviortrial['session'].values)>0)[0]
     if len(blockswitches)>0:
@@ -323,58 +243,7 @@ def plot_trials(df_behaviortrial,
                 choice_filter = np.ones(10)/10): 
     """This function downloads foraging sessions from datajoint and plots them"""
     
-    #%%
-# =============================================================================
-#     fig=plt.figure()
-#     ax1=fig.add_axes([0,0,2,.8])
-#     ax2=fig.add_axes([0,-1,2,.8])
-#     plottype = '2lickport'
-#     wr_name = 'FOR11'
-#     sessions = (1,46)
-#     plot_every_choice = True
-#     show_bias_check_trials = True
-#     choice_filter = np.ones(10)/10
-# =============================================================================
 
-    
-# =============================================================================
-#     ax1.clear()
-#     subject_id = (lab.WaterRestriction()&'water_restriction_number = "{}"'.format(wr_name)).fetch1('subject_id')
-#     
-#     df_behaviortrial = pd.DataFrame(np.asarray((experiment.BehaviorTrial()* experiment.SessionTrial() * experiment.SessionBlock()* behavior_foraging.TrialReactionTime &
-#                                     'subject_id = {}'.format(subject_id) &
-#                                     'session >= {}'.format(sessions[0]) &
-#                                     'session <= {}'.format(sessions[1])).fetch('session',
-#                                                                                'trial',
-#                                                                                'p_reward_right',
-#                                                                                'p_reward_left',
-#                                                                                'p_reward_middle',
-#                                                                                'trial_choice',
-#                                                                                'outcome'
-#                                                                               )).T,columns = ['session',
-#                                                                                               'trial',
-#                                                                                               'p_reward_right',
-#                                                                                               'p_reward_left',
-#                                                                                               'p_reward_middle',
-#                                                                                               'trial_choice',
-#                                                                                               'outcome'])
-#     
-#     
-# 
-#     unique_sessions = df_behaviortrial['session'].unique()
-#     for session in unique_sessions:
-#         total_trials_so_far = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session < {}'.format(session)).fetch('session_total_trial_num')
-#         bias_check_trials_now = (behavior_foraging.SessionStats()&'subject_id = {}'.format(subject_id) &'session = {}'.format(session)).fetch1('session_bias_check_trial_num')
-#         total_trials_so_far =sum(total_trials_so_far)
-# 
-#         df_behaviortrial.loc[df_behaviortrial['session']==session, 'trial'] += total_trials_so_far
-#     
-#     if not show_bias_check_trials:
-#         realtraining = (df_behaviortrial['p_reward_left']<1) & (df_behaviortrial['p_reward_right']<1) & ((df_behaviortrial['p_reward_middle']<1) | df_behaviortrial['p_reward_middle'].isnull())
-#         df_behaviortrial = df_behaviortrial[realtraining]
-#         df_behaviortrial = df_behaviortrial.reset_index(drop=True)
-# =============================================================================
-    
     
     df_behaviortrial['trial_choice_plot'] = np.nan
     df_behaviortrial.loc[df_behaviortrial['trial_choice'] == 'left', 'trial_choice_plot'] = 0
@@ -458,18 +327,7 @@ def plot_efficiency_matching_bias(ax3,
                                   wr_name = 'FOR01',
                                   sessions = (5,11),
                                   show_bias_check_trials = True,
-                                  plot_efficiency_type='sum_prob'):
-    #%%
-# =============================================================================
-#     fig=plt.figure()
-#     ax3=fig.add_axes([0,0,2,.8])
-#     plottype = '2lickport'
-#     wr_name = 'FOR11'
-#     sessions = (1,46)
-#     show_bias_check_trials = True,
-#     plot_efficiency_type='sum_prob'
-# =============================================================================
-
+                                  plot_efficiency_type='ideal'):
     
     subject_id = (lab.WaterRestriction()&'water_restriction_number = "{}"'.format(wr_name)).fetch1('subject_id')
     if show_bias_check_trials:
@@ -553,12 +411,6 @@ def plot_efficiency_matching_bias(ax3,
 
 
 def plot_local_efficiency_matching_bias(df_behaviortrial,ax3):
-    #%%
-# =============================================================================
-#     fig=plt.figure()
-#     ax3=fig.add_axes([0,0,2,.8])
-# =============================================================================
-    
     
     ax3.plot(df_behaviortrial['trial'],df_behaviortrial['local_efficiency'],'k-')     
     blockswitches = np.where(np.diff(df_behaviortrial['session'].values)>0)[0]

@@ -10,13 +10,11 @@ try:
             behavior_foraging.TrialReactionTime().populate(**arguments)
             behavior_foraging.BlockStats().populate(**arguments)
             behavior_foraging.SessionStats().populate(**arguments)
-            behavior_foraging.SessionRuns().populate(**arguments)
             behavior_foraging.SessionTaskProtocol().populate(**arguments)
-            behavior_foraging.BlockRewardRatioNoBiasCheck().populate(**arguments)
-            behavior_foraging.BlockChoiceRatioNoBiasCheck().populate(**arguments)
+            behavior_foraging.BlockRewardFractionNoBiasCheck().populate(**arguments)
+            behavior_foraging.BlockChoiceFractionNoBiasCheck().populate(**arguments)
             behavior_foraging.SessionMatchBias().populate(**arguments)
             behavior_foraging.BlockEfficiency().populate(**arguments)   
-            behavior_foraging.BlockMaxProportion().populate(**arguments)
 
             
 except:
@@ -27,13 +25,11 @@ def populatemytables_core(arguments,runround):
         behavior_foraging.TrialReactionTime().populate(**arguments)
         behavior_foraging.BlockStats().populate(**arguments)
         behavior_foraging.SessionStats().populate(**arguments)
-        behavior_foraging.SessionRuns().populate(**arguments)
         behavior_foraging.SessionTaskProtocol().populate(**arguments)
-        behavior_foraging.BlockRewardRatioNoBiasCheck().populate(**arguments)
-        behavior_foraging.BlockChoiceRatioNoBiasCheck().populate(**arguments)
+        behavior_foraging.BlockRewardFractionNoBiasCheck().populate(**arguments)
+        behavior_foraging.BlockChoiceFractionNoBiasCheck().populate(**arguments)
         behavior_foraging.SessionMatchBias().populate(**arguments)
         behavior_foraging.BlockEfficiency().populate(**arguments) 
-        behavior_foraging.BlockMaxProportion().populate(**arguments)
         
         
 def populatemytables(paralel = True, cores = 9):
